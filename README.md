@@ -1,2 +1,2 @@
-# xiaoyujinghe.github-io
+# xiaoyujinghe.github.io
 My personal site
