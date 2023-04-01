@@ -1,0 +1,82 @@
+name: build code book
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/**.yml'
+      - 'assets/**'
+      - 'code/**'
+      - 'python/**'
+    tags:        
+      - v*             # Push events to v1 tag
+
+jobs:
+  convert:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2 # access repo files
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7' # Version range or exact version of a Python version to use, using SemVer's version range syntax
+          architecture: 'x64' # optional x64 or x86. Defaults to x64 if not specified
+      - name: DumpMarkdown 
+        run: python python/main.py
+
+      - name: Get current date
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+
+      - name: PandocLatex
+        uses: ./
+        with:
+          args: >-
+            pandoc assets/build.md 
+            -o artifact/build.pdf
+            --from markdown 
+            --template template/eisvogel.latex 
+            --resource-path=assets 
+            --number-sections 
+            --top-level-division=chapter 
+            --shift-heading-level-by=-1 
+            --highlight-style monochrome 
+            --pdf-engine "xelatex" 
+            --toc 
+            -V CJKmainfont="Noto Sans Mono CJK SC"
+            -V toc-own-page="true" 
+            -V book
+            -V code-block-font-size="\normalsize"
+            -V title="代码模板"
+            -V author="Tieway59"
+            -V date="${{ steps.date.outputs.date }}"
+      - name: UploadArtifact
+        uses: actions/upload-artifact@master
+        with:
+          name: build-${{ github.run_number }}
+          path: artifact
+
+      - name: PushCommit
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          cp artifact/build.pdf backups/${{ steps.date.outputs.date }}-build${{ github.run_number }}.pdf
+          cp assets/build.md backups/${{ steps.date.outputs.date }}-build${{ github.run_number }}.md
+          git config user.name TieWay59
+          git config user.email tieway59@foxmail.com
+          git add .
+          git commit -m "CI: produce ${{ steps.date.outputs.date }}-build${{ github.run_number }}.pdf"
+          git push
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifact/build.pdf
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
